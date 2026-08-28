@@ -15,6 +15,7 @@ void allpass::setbuffer(float *buf, int size)
 {
 	buffer = buf; 
 	bufsize = size;
+	bufidx = 0;
 }
 
 void allpass::mute()
