@@ -6,33 +6,34 @@
 
 #include "revmodel.hpp"
 
-revmodel::revmodel()
+// Jezar quoted one constant per delay line. They are gathered here so the
+// lengths can be scaled by a loop; the values are his, unchanged.
+static const int combtuningL[numcombs] =
+	{ combtuningL1, combtuningL2, combtuningL3, combtuningL4,
+	  combtuningL5, combtuningL6, combtuningL7, combtuningL8 };
+static const int combtuningR[numcombs] =
+	{ combtuningR1, combtuningR2, combtuningR3, combtuningR4,
+	  combtuningR5, combtuningR6, combtuningR7, combtuningR8 };
+static const int allpasstuningL[numallpasses] =
+	{ allpasstuningL1, allpasstuningL2, allpasstuningL3, allpasstuningL4 };
+static const int allpasstuningR[numallpasses] =
+	{ allpasstuningR1, allpasstuningR2, allpasstuningR3, allpasstuningR4 };
+
+// The tunings are quoted for 44100Hz. Dividing by that rate before scaling
+// leaves them untouched there, so the reverb is unchanged at the rate Jezar
+// tuned it by ear. Elsewhere the nearest whole sample is taken rather than the
+// one below, which is both the closer delay and what Pd's delread~ arrives at
+// for the same tuning.
+static int scaletuning(int tuning, float samplerate)
 {
-	// Tie the components to their buffers
-	combL[0].setbuffer(bufcombL1,combtuningL1);
-	combR[0].setbuffer(bufcombR1,combtuningR1);
-	combL[1].setbuffer(bufcombL2,combtuningL2);
-	combR[1].setbuffer(bufcombR2,combtuningR2);
-	combL[2].setbuffer(bufcombL3,combtuningL3);
-	combR[2].setbuffer(bufcombR3,combtuningR3);
-	combL[3].setbuffer(bufcombL4,combtuningL4);
-	combR[3].setbuffer(bufcombR4,combtuningR4);
-	combL[4].setbuffer(bufcombL5,combtuningL5);
-	combR[4].setbuffer(bufcombR5,combtuningR5);
-	combL[5].setbuffer(bufcombL6,combtuningL6);
-	combR[5].setbuffer(bufcombR6,combtuningR6);
-	combL[6].setbuffer(bufcombL7,combtuningL7);
-	combR[6].setbuffer(bufcombR7,combtuningR7);
-	combL[7].setbuffer(bufcombL8,combtuningL8);
-	combR[7].setbuffer(bufcombR8,combtuningR8);
-	allpassL[0].setbuffer(bufallpassL1,allpasstuningL1);
-	allpassR[0].setbuffer(bufallpassR1,allpasstuningR1);
-	allpassL[1].setbuffer(bufallpassL2,allpasstuningL2);
-	allpassR[1].setbuffer(bufallpassR2,allpasstuningR2);
-	allpassL[2].setbuffer(bufallpassL3,allpasstuningL3);
-	allpassR[2].setbuffer(bufallpassR3,allpasstuningR3);
-	allpassL[3].setbuffer(bufallpassL4,allpasstuningL4);
-	allpassR[3].setbuffer(bufallpassR4,allpasstuningR4);
+	int scaled = (int)((double)tuning * (double)samplerate / 44100.0 + 0.5);
+	return scaled < 1 ? 1 : scaled;
+}
+
+revmodel::revmodel(float samplerate)
+{
+	this->samplerate = samplerate > 0 ? samplerate : 44100.0f;
+	setbuffers();
 
 	// Set default values
 	allpassL[0].setfeedback(0.5f);
@@ -54,6 +55,43 @@ revmodel::revmodel()
 	mute();
 }
 
+void revmodel::setbuffers()
+{
+	for (int i = 0; i < numcombs; i++)
+	{
+		bufcombL[i].assign(scaletuning(combtuningL[i], samplerate), 0.0f);
+		bufcombR[i].assign(scaletuning(combtuningR[i], samplerate), 0.0f);
+		combL[i].setbuffer(&bufcombL[i][0], (int)bufcombL[i].size());
+		combR[i].setbuffer(&bufcombR[i][0], (int)bufcombR[i].size());
+	}
+	for (int i = 0; i < numallpasses; i++)
+	{
+		bufallpassL[i].assign(scaletuning(allpasstuningL[i], samplerate), 0.0f);
+		bufallpassR[i].assign(scaletuning(allpasstuningR[i], samplerate), 0.0f);
+		allpassL[i].setbuffer(&bufallpassL[i][0], (int)bufallpassL[i].size());
+		allpassR[i].setbuffer(&bufallpassR[i][0], (int)bufallpassR[i].size());
+	}
+}
+
+void revmodel::setsamplerate(float samplerate)
+{
+	if (samplerate <= 0 || samplerate == this->samplerate)
+		return;
+
+	this->samplerate = samplerate;
+	setbuffers();
+
+	// The delay lines are new, so the coefficients held by the old ones have
+	// to be put back from the parameters, which the sample rate does not
+	// change.
+	update();
+}
+
+float revmodel::getsamplerate()
+{
+	return samplerate;
+}
+
 void revmodel::mute()
 {
 	if (getmode() >= freezemode)
@@ -64,7 +102,7 @@ void revmodel::mute()
 		combL[i].mute();
 		combR[i].mute();
 	}
-	for (i=0;i<numallpasses;i++)
+	for (int i=0;i<numallpasses;i++)
 	{
 		allpassL[i].mute();
 		allpassR[i].mute();
@@ -88,7 +126,7 @@ void revmodel::processreplace(float *inputL, float *inputR, float *outputL, floa
 		}
 
 		// Feed through allpasses in series
-		for(i=0; i<numallpasses; i++)
+		for(int i=0; i<numallpasses; i++)
 		{
 			outL = allpassL[i].process(outL);
 			outR = allpassR[i].process(outR);
@@ -123,7 +161,7 @@ void revmodel::processmix(float *inputL, float *inputR, float *outputL, float *o
 		}
 
 		// Feed through allpasses in series
-		for(i=0; i<numallpasses; i++)
+		for(int i=0; i<numallpasses; i++)
 		{
 			outL = allpassL[i].process(outL);
 			outR = allpassR[i].process(outR);

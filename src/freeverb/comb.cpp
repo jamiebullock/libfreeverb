@@ -16,6 +16,7 @@ void comb::setbuffer(float *buf, int size)
 {
 	buffer = buf; 
 	bufsize = size;
+	bufidx = 0;
 }
 
 void comb::mute()
