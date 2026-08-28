@@ -35,14 +35,26 @@ history.
 | `comb.hpp` | `4a73b615fbbdf1b40afd2d006c8fd1b6fc1a7273` | no |
 | `denormals.h` | `f8714127144a394d8cad46de3d9c5afe4456c4b9` | no |
 | `tuning.h` | `baaa9ce0042626289ad2e324974944dbd0adc2cf` | no |
+| `allpass.cpp` | `5d80eda2bd442c137a0e6949e4ae7dc2f823e769` | yes, one line |
+| `comb.cpp` | `c05f5069c84f0cc57ca757ec84ed1feafd332ea3` | yes, one line |
 | `revmodel.hpp` | `10fe7c67d5e8c14e632e29e3f40044e63a8ba0a0` | yes |
 | `revmodel.cpp` | `a69e2f5b9924850c4e7cfb42330f928fe7446f14` | yes |
 
-`comb` and `allpass` take their delay memory from the caller through
-`setbuffer`, so they need nothing from this library and stay as they are.
+This is the whole of upstream's `Components/`, which is what the library is
+built from.
+
 `tuning.h` holds the constants the author arrived at by listening, which are not
-this library's to change. Only `revmodel` declares delay lines as fixed arrays
-sized for 44100 Hz, and only `revmodel` is modified.
+this library's to change, and the two filter headers carry only the processing
+loops, which are also unchanged. `revmodel` is where the delay lines are
+declared as fixed arrays sized for 44100 Hz, so it is where following the sample
+rate is done.
+
+`comb::setbuffer` and `allpass::setbuffer` take a new buffer without resetting
+the read index into it. Upstream calls each of them once, at construction, so
+the index is always zero and this never shows. Following the sample rate means
+calling them again on a buffer that may be shorter than the last, where a stale
+index reads off the end, so each gains one line setting it back to zero. Neither
+change touches the processing loops or the sound.
 
 ## Formatting
 
